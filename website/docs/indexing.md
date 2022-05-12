@@ -25,6 +25,7 @@ Currently, Hudi supports the following indexing options.
 - **Bloom Index (default):** Employs bloom filters built out of the record keys, optionally also pruning candidate files using record key ranges.
 - **Simple Index:** Performs a lean join of the incoming update/delete records against keys extracted from the table on storage.
 - **HBase Index:** Manages the index mapping in an external Apache HBase table.
+- **Bucket Index:** Distributes records to buckets using subset of the records keys, so that duplicate records are guaranteed to be routed to the same file group.
 - **Bring your own implementation:** You can extend this [public API](https://github.com/apache/hudi/blob/master/hudi-client/hudi-client-common/src/main/java/org/apache/hudi/index/HoodieIndex.java) 
 to implement custom indexing.
 
@@ -43,11 +44,27 @@ global options - `hoodie.index.type=GLOBAL_BLOOM` and `hoodie.index.type=GLOBAL_
   but can deliver much better performance since the index lookup operation becomes `O(number of records updated/deleted)` and
   scales well with write volume.
 
+### Bucket Index
+
+Bucket Index bucketizes data under each partition using configured hashing rules.
+The hashing rule takes (a subset of) record keys as input and routes records to a 'fixed' bucket (i.e., file group).
+With this mechanism, data with the same record keys will be appended to the same bucket and de-duplication can be easily done without touching the whole partition.
+
+Currently, Hudi provides two hashing rules (engines): 1) Simple Hashing and 2) Consistent Hashing, configured through `hoodie.index.bucket.engine=[SIMPLE | CONSISTENT_HASHING]`.
+Both of them maintain a one-one mapping between buckets and file groups, so that indexing can be done without reading (searching) any existing data.
+
+The bucket number should be specified at the initialization of a table (`hoodie.bucket.index.num.buckets`).
+For the `Simple Hashing` rule, the bucket number cannot be changed once you create the table, so a reasonable bucket number should be chosen to ensure the file groups do not grow too big.
+For the `Consistent Hashing` rule, the bucket number will dynamically change based on bucket size, e.g., large buckets will split and small buckets will merge.
+
+For more details of bucket index, please refer to [RFC-29](https://cwiki.apache.org/confluence/display/HUDI/RFC+-+29%3A+Hash+Index) and [RFC-42](https://github.com/apache/hudi/blob/master/rfc/rfc-42/rfc-42.md).
+
+## Indexing Strategies
+
 Since data comes in at different volumes, velocity and has different access patterns, different indices could be used for different workload types.
 Let’s walk through some typical workload types and see how to leverage the right Hudi index for such use-cases. 
 This is based on our experience and you should diligently decide if the same strategies are best for your workloads.
 
-## Indexing Strategies
 ### Workload 1: Late arriving updates to fact tables
 Many companies store large volumes of transactional data in NoSQL data stores. For eg, trip tables in case of ride-sharing, buying and selling of shares,
 orders in an e-commerce site. These tables are usually ever growing with random updates on most recent data with long tail updates going to older data, either
