@@ -43,6 +43,8 @@ public class TestBucketIdentifier {
       + "{\"name\": \"nested_col\",\"type\": "
       + NESTED_COL_SCHEMA + "}"
       + "]}";
+  public static final String COMPLEX_SCHEMA = "{\"type\":\"record\", \"name\":\"complex_schema\",\"fields\": ["
+      + "{\"name\": \"array_field\",\"type\": \"string\"}, {\"name\": \"timestamp\",\"type\": \"long\"}]}";
 
   public static GenericRecord getRecord() {
     return getRecord(getNestedColRecord("val1", 10L));
@@ -63,6 +65,13 @@ public class TestBucketIdentifier {
     record.put("pii_col", "pi");
     record.put("nested_col", nestedColRecord);
     return record;
+  }
+
+  public static GenericRecord getComplexRecord(List<String> arrayValues) {
+    GenericRecord complexRecord = new GenericData.Record(new Schema.Parser().parse(COMPLEX_SCHEMA));
+    complexRecord.put("array_field", arrayValues);
+    complexRecord.put("timestamp", 4357686L);
+    return complexRecord;
   }
 
   @Test
@@ -97,6 +106,16 @@ public class TestBucketIdentifier {
     int bucketId = BucketIdentifier.getBucketId(hoodieRecord, indexKeyField, 8);
     assert bucketId == BucketIdentifier.getBucketId(
         Arrays.asList(record.get(indexKeyField).toString()), 8);
+  }
+
+  @Test
+  public void testBucketIdOfRecordKeyWithComplexDataType() {
+    String keyField = "array_field";
+    GenericRecord record = getComplexRecord(Arrays.asList("a", "b", "c"));
+    HoodieRecord hoodieRecord = new HoodieAvroRecord(
+        new HoodieKey(KeyGenUtils.getRecordKey(record, keyField, false), ""), null);
+    int bucketId = BucketIdentifier.getBucketId(hoodieRecord, keyField, 8);
+    Assertions.assertEquals(5, bucketId);
   }
 
   @Test

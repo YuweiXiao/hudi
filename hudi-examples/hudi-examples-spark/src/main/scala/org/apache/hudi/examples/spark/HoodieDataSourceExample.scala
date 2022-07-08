@@ -23,7 +23,9 @@ import org.apache.hudi.DataSourceWriteOptions.{PARTITIONPATH_FIELD, PRECOMBINE_F
 import org.apache.hudi.QuickstartUtils.getQuickstartWriteConfigs
 import org.apache.hudi.common.model.HoodieAvroPayload
 import org.apache.hudi.config.HoodieWriteConfig.TBL_NAME
+import org.apache.hudi.config.HoodieIndexConfig.{INDEX_TYPE, BUCKET_INDEX_ENGINE_TYPE, BUCKET_INDEX_NUM_BUCKETS}
 import org.apache.hudi.examples.common.{HoodieExampleDataGenerator, HoodieExampleSparkUtils}
+import org.apache.hudi.index.HoodieIndex.{BucketIndexEngineType, IndexType}
 import org.apache.spark.sql.SaveMode.{Append, Overwrite}
 import org.apache.spark.sql.SparkSession
 
@@ -68,6 +70,27 @@ object HoodieDataSourceExample {
   }
 
   /**
+   * Bucket Index example
+   * Generate some new trips, load them into a DataFrame and write the DataFrame into the Hudi dataset as below.
+   */
+  def insertDataWithBucketIndex(spark: SparkSession, tablePath: String, tableName: String, dataGen: HoodieExampleDataGenerator[HoodieAvroPayload]): Unit = {
+    val commitTime: String = System.currentTimeMillis().toString
+    val inserts = dataGen.convertToStringList(dataGen.generateInserts(commitTime, 20))
+    val df = spark.read.json(spark.sparkContext.parallelize(inserts, 1))
+    df.write.format("org.apache.hudi")
+      .options(getQuickstartWriteConfigs)
+      .option(PRECOMBINE_FIELD.key, "ts")
+      .option(RECORDKEY_FIELD.key, "uuid")
+      .option(PARTITIONPATH_FIELD.key, "partitionpath")
+      .option(INDEX_TYPE.key(), IndexType.BUCKET.name())
+      .option(BUCKET_INDEX_ENGINE_TYPE.key(), BucketIndexEngineType.SIMPLE.name())
+      .option(BUCKET_INDEX_NUM_BUCKETS.key(), "4")
+      .option(TBL_NAME.key, tableName)
+      .mode(Overwrite)
+      .save(tablePath)
+  }
+
+    /**
     * Generate some new trips, load them into a DataFrame and write the DataFrame into the Hudi dataset as below.
     */
   def insertData(spark: SparkSession, tablePath: String, tableName: String, dataGen: HoodieExampleDataGenerator[HoodieAvroPayload]): Unit = {
